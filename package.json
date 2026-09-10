@@ -1,0 +1,52 @@
+{
+  "name": "optiroute-engine",
+  "version": "1.0.0",
+  "description": "Sistema de optimización de rutas logísticas con microservicios y teoría de grafos",
+  "private": true,
+  "workspaces": [
+    "api-gateway",
+    "order-service",
+    "routing-engine"
+  ],
+  "scripts": {
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:build": "docker-compose build",
+    "docker:logs": "docker-compose logs -f",
+    "install:all": "npm install && npm run install:services",
+    "install:services": "npm install --workspaces",
+    "dev:gateway": "npm run dev --workspace=api-gateway",
+    "dev:order": "npm run dev --workspace=order-service",
+    "dev:routing": "npm run dev --workspace=routing-engine",
+    "build:all": "npm run build --workspaces",
+    "test:all": "npm run test --workspaces",
+    "lint:all": "npm run lint --workspaces"
+  },
+  "keywords": [
+    "logistics",
+    "route-optimization",
+    "microservices",
+    "nestjs",
+    "graph-theory",
+    "dijkstra",
+    "tsp"
+  ],
+  "author": "Ingeniería de Sistemas",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
+  },
+  "dependencies": {
+    "@nestjs/config": "^12.0.0",
+    "@nestjs/swagger": "^12.0.1",
+    "@nestjs/typeorm": "^12.0.1",
+    "@types/amqplib": "^0.10.8",
+    "amqplib": "^2.0.1",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "ioredis": "^5.11.1",
+    "pg": "^8.23.0",
+    "typeorm": "^0.3.31"
+  }
+}

@@ -1,0 +1,180 @@
+version: '3.8'
+
+services:
+  # PostgreSQL para Order Service
+  postgres-order:
+    image: postgres:15-alpine
+    container_name: optiroute-postgres-order
+    environment:
+      POSTGRES_USER: ${DB_USER:-optiroute}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-optiroute123}
+      POSTGRES_DB: ${DB_NAME_ORDER:-order_db}
+    ports:
+      - "${DB_PORT_ORDER:-5432}:5432"
+    volumes:
+      - postgres-order-data:/var/lib/postgresql/data
+    networks:
+      - optiroute-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-optiroute} -d ${DB_NAME_ORDER:-order_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # PostgreSQL para Routing Engine
+  postgres-routing:
+    image: postgres:15-alpine
+    container_name: optiroute-postgres-routing
+    environment:
+      POSTGRES_USER: ${DB_USER:-optiroute}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-optiroute123}
+      POSTGRES_DB: ${DB_NAME_ROUTING:-routing_db}
+    ports:
+      - "${DB_PORT_ROUTING:-5433}:5432"
+    volumes:
+      - postgres-routing-data:/var/lib/postgresql/data
+    networks:
+      - optiroute-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-optiroute} -d ${DB_NAME_ROUTING:-routing_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Redis para caché
+  redis:
+    image: redis:7-alpine
+    container_name: optiroute-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - optiroute-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # RabbitMQ para mensajería
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: optiroute-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-optiroute}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-optiroute123}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - optiroute-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: optiroute-api-gateway
+    ports:
+      - "${GATEWAY_PORT:-8080}:${GATEWAY_PORT:-8080}"
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=${GATEWAY_PORT:-8080}
+      - JWT_SECRET=${JWT_SECRET:-optiroute-jwt-secret-key-2024}
+      - ORDER_SERVICE_URL=http://order-service:${ORDER_SERVICE_PORT:-8081}
+      - ROUTING_SERVICE_URL=http://routing-engine:${ROUTING_SERVICE_PORT:-8082}
+      - REDIS_URL=redis://redis:6379
+      - RABBITMQ_URL=amqp://optiroute:optiroute123@rabbitmq:5672
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - optiroute-network
+    restart: unless-stopped
+
+  # Order Service
+  order-service:
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile
+    container_name: optiroute-order-service
+    ports:
+      - "${ORDER_SERVICE_PORT:-8081}:${ORDER_SERVICE_PORT:-8081}"
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=${ORDER_SERVICE_PORT:-8081}
+      - DB_HOST=postgres-order
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-optiroute}
+      - DB_PASSWORD=${DB_PASSWORD:-optiroute123}
+      - DB_NAME=${DB_NAME_ORDER:-order_db}
+      - RABBITMQ_URL=amqp://optiroute:optiroute123@rabbitmq:5672
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres-order:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - optiroute-network
+    restart: unless-stopped
+
+  # Routing Engine
+  routing-engine:
+    build:
+      context: ./routing-engine
+      dockerfile: Dockerfile
+    container_name: optiroute-routing-engine
+    ports:
+      - "${ROUTING_SERVICE_PORT:-8082}:${ROUTING_SERVICE_PORT:-8082}"
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=${ROUTING_SERVICE_PORT:-8082}
+      - DB_HOST=postgres-routing
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-optiroute}
+      - DB_PASSWORD=${DB_PASSWORD:-optiroute123}
+      - DB_NAME=${DB_NAME_ROUTING:-routing_db}
+      - RABBITMQ_URL=amqp://optiroute:optiroute123@rabbitmq:5672
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres-routing:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - optiroute-network
+    restart: unless-stopped
+
+networks:
+  optiroute-network:
+    driver: bridge
+
+volumes:
+  postgres-order-data:
+    driver: local
+  postgres-routing-data:
+    driver: local
+  redis-data:
+    driver: local
+  rabbitmq-data:
+    driver: local
